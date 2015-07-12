@@ -13,7 +13,9 @@ import java.util.List;
  */
 public class SubtitleCutEngine {
 
-    /* 输出list */
+    /**
+     *  是否输出list
+     */
     public static boolean PRINT_LIST=false;
 
     /**
@@ -30,9 +32,13 @@ public class SubtitleCutEngine {
      */
     private Charset charset;
     /**
-     * 开始剪切的偏移量ms，如00:01:30:456=90456 可以用 {@link SubtitleCutEngine#parseTimeLine2Long(String)} 方法计算得到
+     * 剪切开始的偏移量ms，如00:01:30:456=90456 可以用 {@link SubtitleCutEngine#parseTimeLine2Long(String)} 方法计算得到
      */
-    private long offset;
+    private long startOffset;
+    /**
+     * 剪切结束的偏移量ms,默认为 -1表示到最后
+     */
+    private long endOffset=1;
 
     public String getSrtFilePath() {
         return srtFilePath;
@@ -67,16 +73,28 @@ public class SubtitleCutEngine {
         this.charset = charset;
     }
 
-    public long getOffset() {
-        return offset;
+    public long getStartOffset() {
+        return startOffset;
     }
 
     /**
-     * 设置时间轴的偏移量
-     * @param offset {@link SubtitleCutEngine#offset}
+     * 设置剪切开始时间轴的偏移量
+     * @param startOffset {@link SubtitleCutEngine#startOffset}
      */
-    public void setOffset(long offset) {
-        this.offset = offset;
+    public void setStartOffset(long startOffset) {
+        this.startOffset = startOffset;
+    }
+
+    public long getEndOffset() {
+        return endOffset;
+    }
+
+    /**
+     * 设置剪切开始时间轴的偏移量
+     * @param endOffset {@link SubtitleCutEngine#endOffset}
+     */
+    public void setEndOffset(long endOffset) {
+        this.endOffset = endOffset;
     }
 
     /**
@@ -92,11 +110,14 @@ public class SubtitleCutEngine {
             charset=FileCharsetDetector.getFileCharset(file);
         }
         if(charset == null){
-            charset=Charset.defaultCharset();
+            charset=Charset.defaultCharset(); //编码不正确会乱码的！
+        }
+        if(startOffset >= endOffset){
+            endOffset=-1;
         }
         System.out.println("the charset is "+charset);
         List<SubtitleItem> items=readAllItems(file);
-        offset(offset,items);
+        offset(items);
         exportSubtitle(items);
     }
 
@@ -150,37 +171,40 @@ public class SubtitleCutEngine {
 
     /**
      * 计算剪切
-     * @param offset
      * @param items
      */
-    private  void offset(long offset,List<SubtitleItem> items){
+    private  void offset(List<SubtitleItem> items){
         Collections.sort(items);
         //得到所有数据中和偏移量最近的索引
-        final int stIndex = Math.abs(Collections.binarySearch(items,new SubtitleItem(0,offset,0,null)));
-        System.out.println("------------  find index   "+stIndex);
+        final int stIndex = Math.abs(Collections.binarySearch(items,new SubtitleItem(0,startOffset,0,null)));
+        int endIndex=-1;
+        if(endOffset != -1){
+            endIndex= Math.abs(Collections.binarySearch(items,new SubtitleItem(0,endOffset,0,null)));
+        }else {
+            endIndex=items.size();
+        }
+        final int count=endIndex-stIndex;
+        System.out.println("------------>  find  start index   "+stIndex+"   end index  "+endIndex+"   count  "+count);
         SubtitleItem item=null;
         long st=0;
         long firstOffset=-1; //记录最近点与偏移量的间隔
-        int size=items.size();
-        for (int i=0,j=0;i<size;i++,j++){
-            if(j<stIndex){
-                //将最近点之前的数据删除
-                items.remove(i);
-                i--;
-            }else {
-                size=items.size();
+        for (int i=0,j=0;i<items.size();i++,j++){
+            if(j >= stIndex-1 && j < endIndex-1 ){
                 item=items.get(i);
-                if(j==stIndex && firstOffset==-1){
-                    firstOffset=item.getStartTimeLine()-offset;
+                if(j== stIndex-1 && firstOffset==-1){
+                    firstOffset=item.getStartTimeLine()-startOffset;
                 }
-                if(j == stIndex){
+                if(j == stIndex-1){
                     st=firstOffset;
                 }else {
-                    st=item.getStartTimeLine()-offset-firstOffset;
+                    st=item.getStartTimeLine()-startOffset-firstOffset;
                 }
                 item.setStartTimeLine(st);
                 item.setEndTimeLine(st+item.getTimeLength());
-                item.setIndex(j-stIndex);
+                item.setIndex(i);
+            }else {
+                items.remove(i);
+                i--;
             }
         }
         printList(items);
